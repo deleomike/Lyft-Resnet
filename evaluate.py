@@ -41,7 +41,7 @@ def evaluate(model, device, data_path):
                                  shuffle=test_cfg["shuffle"],
                                  batch_size=test_cfg["batch_size"],
                                  num_workers=test_cfg["num_workers"])
-    test_dataloader = test_dataloader.to(device)
+    test_dataloader = test_dataloader
     print(test_dataloader)
 
     # ==== EVAL LOOP

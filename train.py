@@ -20,7 +20,7 @@ from pathlib import Path
 
 import os
 
-def train(model, device, data_path):
+def train(model, device, data_path, lr=1e-3, force_iters=None, file_name="resnet.pth"):
 
     # set env variable for data
     os.environ["L5KIT_DATA_FOLDER"] = data_path
@@ -46,15 +46,20 @@ def train(model, device, data_path):
     print(train_dataset)
 
     # ==== INIT MODEL parameters
-    optimizer = optim.Adam(model.parameters(), lr=1e-5)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss(reduction="none")
 
     # ==== TRAIN LOOP
+    if force_iters is None:
+        iterations = cfg["train_params"]["max_num_steps"]
+    else:
+        iterations = force_iters
+
     tr_it = iter(train_dataloader)
-    progress_bar = tqdm(range(cfg["train_params"]["max_num_steps"]))
+    progress_bar = tqdm(range(iterations))
     losses_train = []
     rolling_avg = []
-    torch.save(model.state_dict(), "/home/michael/Workspace/Lyft/model/resnet_base.pth")
+    #torch.save(model.state_dict(), "/home/michael/Workspace/Lyft/model/resnet_base.pth")
     for i in progress_bar:
         try:
             data = next(tr_it)
@@ -77,8 +82,8 @@ def train(model, device, data_path):
         # if i == 10000:
         #     torch.save(model.state_dict(), "/home/michael/Workspace/Lyft/model/resnet" + str(i) + ".pth")
 
-
-    torch.save(model.state_dict(), "/home/michael/Workspace/Lyft/model/resnet.pth")
+    print("Done Training")
+    torch.save(model.state_dict(), f"/home/michael/Workspace/Lyft/model/{file_name}")
     plt.plot(rolling_avg)
 
     return model

@@ -5,16 +5,16 @@ from l5kit.configs import load_config_data
 
 class Model(nn.Module):
 
-    def __init__(self, config_path=None, checkpoint_path=None):
+    def __init__(self, config=None, checkpoint_path=None):
         super().__init__()
 
-        if config_path is None:
+        if config is None:
             # Load in the config
-            self.cfg = load_config_data("./config.yaml")
+            self.cfg = load_config_data("./models/resnet152/config.yaml")
         else:
-            self.cfg = load_config_data(config_path)
+            self.cfg = config
 
-        model = resnet152(pretrained=False)
+        model = resnet152(pretrained=True)
 
         # change input channels number to match the rasterizer's output
         num_history_channels = (self.cfg["model_params"]["history_num_frames"] + 1) * 2
@@ -22,6 +22,11 @@ class Model(nn.Module):
         object_methods = [method_name for method_name in dir(model.conv1)
                           if callable(getattr(model.conv1, method_name))]
 
+        print(num_in_channels)
+        print(model.conv1.out_channels)
+        print(model.conv1.kernel_size)
+        print(model.conv1.stride)
+        print(model.conv1.padding)
         model.conv1 = nn.Conv2d(
             in_channels=num_in_channels,
             out_channels=model.conv1.out_channels,
@@ -48,3 +53,4 @@ class Model(nn.Module):
         loss = loss * target_availabilities
         loss = loss.mean()
         return loss, outputs
+

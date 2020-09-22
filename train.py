@@ -68,7 +68,7 @@ def train(model, device, data_path, lr=1e-3, force_iters=None, file_name="resnet
             data = next(tr_it)
         model.train()
         torch.set_grad_enabled(True)
-        loss, _ = model.forward(data, device, criterion)
+        loss, _, _ = model.forward(data, criterion)
 
         # Backward pass
         optimizer.zero_grad()

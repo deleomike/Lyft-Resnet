@@ -56,7 +56,7 @@ def evaluate(model, device, data_path):
     agent_ids = []
     progress_bar = tqdm(test_dataloader)
     for data in progress_bar:
-        _, outputs = model.forward(data, device, criterion)
+        _, outputs, _ = model.forward(data, device, criterion)
         future_coords_offsets_pd.append(outputs.cpu().numpy().copy())
         timestamps.append(data["timestamp"].numpy().copy())
         agent_ids.append(data["track_id"].numpy().copy())

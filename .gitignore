@@ -139,5 +139,6 @@ cython_debug/
 
 submission.csv
 
+datasets/
 data/
 model/

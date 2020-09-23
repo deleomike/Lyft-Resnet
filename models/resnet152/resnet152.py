@@ -88,14 +88,10 @@ class Model(nn.Module):
 
 class MultiModalModel(nn.Module):
 
-    def __init__(self, config=None, num_modes=1, checkpoint_path=None):
+    def __init__(self, config, num_modes=1, checkpoint_path=None):
         super().__init__()
 
-        if config is None:
-            # Load in the config
-            self.cfg = load_config_data("./models/resnet152/config.yaml")
-        else:
-            self.cfg = config
+        self.cfg = config
 
         model = resnet152(pretrained=True)
 

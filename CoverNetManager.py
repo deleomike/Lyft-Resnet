@@ -2,6 +2,12 @@ from nuscenes.prediction.models.covernet import CoverNet
 from nuscenes.prediction.models.mtp import MTP
 from nuscenes.prediction.models.backbone import MobileNetBackbone, ResNetBackbone
 
+from l5kit.data import LocalDataManager, ChunkedDataset
+from l5kit.rasterization import build_rasterizer
+from l5kit.dataset import AgentDataset
+
+from torch.utils.data import DataLoader
+
 import os
 import torch
 
@@ -19,7 +25,7 @@ class MTPManager:
         self.data_path = data_path
         self.device = device
 
-        self.backbone = ResNetBackbone('ResNet50')
+        self.backbone = MobileNetBackbone('mobilenet_v2')
         self.model = MTP(self.backbone, num_modes=num_modes)
 
     def train(self, iterations, lr=1e-3, file_name="resnet_mtp.pth"):
@@ -66,7 +72,8 @@ class MTPManager:
                 data = next(tr_it)
             self.model.train()
             torch.set_grad_enabled(True)
-            loss, _, _ = self.model.forward(data, criterion)
+            agent_vector = torch.cat([data["target_positions"], data["target_yaws"]], 2)
+            loss, _, _ = self.model.forward(data["image"].to(self.device), agent_vector)
 
             # Backward pass
             optimizer.zero_grad()
@@ -82,6 +89,8 @@ class MTPManager:
 
         print("Done Training")
         torch.save(self.model.state_dict(), f"/home/michael/Workspace/Lyft/model/{file_name}")
+
+
 
 # class CoverNetManager:
 #

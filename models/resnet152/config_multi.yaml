@@ -6,11 +6,11 @@ format_version: 4
 model_params:
   model_architecture: "resnet152"
 
-  history_num_frames: 50
+  history_num_frames: 10
   history_step_size: 1
   history_delta_time: 0.1
 
-  future_num_frames: 50
+  future_num_frames: 10
   future_step_size: 1
   future_delta_time: 0.1
 

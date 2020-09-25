@@ -5,10 +5,10 @@ from evaluate import evaluate
 
 import torch
 
-data_path = "/home/michael/Workspace/Lyft/data/"
+data_path = "/home/michaeldeleo//Lyft-Resnet/data/"
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-config = load_config_data("/home/michael/Workspace/Lyft/models/resnet152/config_multi.yaml")
+config = load_config_data("/home/michaeldeleo/Lyft-Resnet//models/resnet152/config_multi.yaml")
 model = ResnetModel(num_modes=3, config=config).to(device)
 
 #model.load_state_dict(torch.load("/home/michael/Workspace/Lyft/model/resnet.pth", map_location=device))

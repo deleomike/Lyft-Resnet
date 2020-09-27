@@ -83,7 +83,7 @@ def train(model, device, data_path, lr=1e-3, force_iters=None, file_name="resnet
         #     torch.save(model.state_dict(), "/home/michael/Workspace/Lyft/model/resnet" + str(i) + ".pth")
 
     print("Done Training")
-    torch.save(model.state_dict(), f"/home/michael/Workspace/Lyft/model/{file_name}")
+    torch.save(model.state_dict(), f"f{os.getcwd()}/model/{file_name}")
     plt.plot(rolling_avg)
 
     return model

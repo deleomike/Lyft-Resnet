@@ -31,14 +31,10 @@ from pathlib import Path
 
 class Model(nn.Module):
 
-    def __init__(self, config=None, checkpoint_path=None):
+    def __init__(self, config, checkpoint_path=None):
         super().__init__()
 
-        if config is None:
-            # Load in the config
-            self.cfg = load_config_data("./models/resnet152/config.yaml")
-        else:
-            self.cfg = config
+        self.cfg = config
 
         model = resnet152(pretrained=True)
 
@@ -209,7 +205,7 @@ class MultiModalModel(nn.Module):
             confidences_list.append(confidences.cpu().numpy().copy())
 
         # ==== Save Results
-        pred_path = "./submission.csv"
+        pred_path = f"{os.getcwd()}/submission.csv"
         write_pred_csv(pred_path,
                        timestamps=np.concatenate(timestamps),
                        track_ids=np.concatenate(agent_ids),

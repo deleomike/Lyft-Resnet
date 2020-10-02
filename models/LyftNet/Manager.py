@@ -1,11 +1,11 @@
-from nuscenes.prediction.models.covernet import CoverNet
-from nuscenes.prediction.models.mtp import MTP, MTPLoss
-from nuscenes.prediction.models.backbone import MobileNetBackbone, ResNetBackbone
-from torchvision.models import mnasnet1_0, mnasnet1_3, resnet152
+from models.LyftNet.LyftNet import LyftNet, LyftLoss
+from models.LyftNet.MNASBackbone import MnasBackbone
+from models.resnet152.loss_functions import pytorch_neg_multi_log_likelihood_batch
 
 from l5kit.data import LocalDataManager, ChunkedDataset
 from l5kit.rasterization import build_rasterizer
-from l5kit.dataset import AgentDataset
+# from l5kit.dataset import AgentDataset
+from models.LyftNet.KineticDataset import KineticDataset
 
 from torch.utils.data import DataLoader
 
@@ -20,66 +20,38 @@ import numpy as np
 import pandas as pd
 
 
-class MTPManager:
+class LyftManager:
 
-    def __init__(self, config, data_path, device, num_modes=1):
+    def __init__(self, config, data_path, device, num_modes=3, verbose=False):
 
         self.cfg = config
         self.data_path = data_path
         self.device = device
 
-        self.backbone = MnasBackbone()
-        # self.backbone = ResNetBackbone("resnet50")
+        self.verbose = verbose
 
         # change input channels number to match the rasterizer's output
         num_history_channels = (self.cfg["model_params"]["history_num_frames"] + 1) * 2
         num_in_channels = 3 + num_history_channels
 
-        # self.backbone = mnasnet1_3(pretrained=False)
-        # firstLayer = self.backbone.layers[0]
-        # print(num_in_channels)
-        # print(firstLayer.out_channels)
-        # print(firstLayer.kernel_size)
-        # print(firstLayer.stride)
-        # print(firstLayer.padding)
-        # self.backbone.layers[0] = nn.Conv2d(
-        #     in_channels=num_in_channels,
-        #     out_channels=firstLayer.out_channels,
-        #     kernel_size=firstLayer.kernel_size,
-        #     stride=firstLayer.stride,
-        #     padding=firstLayer.padding,
-        #     bias=False,
-        # )
+        # Create backbone
+        self.backbone = MnasBackbone(num_in_channels=num_in_channels)
 
-        # lastConv = self.backbone.layers[14]
-
-        # self.backbone.layers[14] = nn.Conv2d(
-        #     in_channels=lastConv.in_channels,
-        #     out_channels=lastConv.out_channels,
-        #     kernel_size=(5, 7),
-        #     stride=lastConv.stride,
-        #     padding=lastConv.padding,
-        #     bias=False,
-        # )
+        # Raster Size
+        raster_size = self.cfg["raster_params"]["raster_size"]
 
         # change output size to (X, Y) * number of future states
         num_targets = 2 * self.cfg["model_params"]["future_num_frames"]
         self.future_len = self.cfg["model_params"]["future_num_frames"]
+        print("Number of Targets = ", self.future_len)
         self.num_targets = num_targets
         self.num_preds = num_targets * num_modes
         self.num_modes = num_modes
 
-        # model.fc = nn.Linear(in_features=2048, out_features=self.num_preds + num_modes)
+        self.model = LyftNet(self.backbone, num_modes=num_modes, num_kinetic_dim=7 * self.future_len,
+                             num_targets=num_targets, input_shape=(num_in_channels, raster_size[0], raster_size[1]))
 
-        # print(self.backbone.layers)
-        print("++++++++++++++++++++++++++++++++++++++++++")
-
-
-        future_seconds = self.cfg["model_params"]["future_num_frames"] * self.cfg["model_params"]["future_delta_time"]
-        frequency = 1 / self.cfg["model_params"]["future_delta_time"]
-        self.model = MTP(self.backbone, num_modes=num_modes)#, input_shape=(num_in_channels, 300, 300))
-
-        self.lossModel = MTPLoss(num_modes=num_modes)
+        self.lossModel = LyftLoss(num_modes=num_modes)
         self.model.to(device=self.device)
 
     def train(self, iterations, lr=1e-3, file_name="mtp.pth"):
@@ -99,11 +71,15 @@ class MTPManager:
 
         # Train dataset/dataloader
         train_zarr = ChunkedDataset(dm.require(train_cfg["key"])).open()
-        train_dataset = AgentDataset(cfg, train_zarr, rasterizer)
+        if self.verbose:
+            print("Dataset Chunked")
+        train_dataset = KineticDataset(cfg, train_zarr, rasterizer)
+        if self.verbose:
+            print("Agent Dataset Retrieved")
 
-        agents = pd.DataFrame.from_records(train_zarr.agents,
-                                           columns=['centroid', 'extent', 'yaw', 'velocity', 'track_id',
-                                                    'label_probabilities'])
+        # agents = pd.DataFrame.from_records(train_zarr.agents,
+        #                                    columns=['centroid', 'extent', 'yaw', 'velocity', 'track_id',
+        #                                             'label_probabilities'])
 
         #
         # print(agents.head())
@@ -139,30 +115,34 @@ class MTPManager:
             # this is where it gets real funky
 
             ids = data["track_id"]
-            position_tensor = data["target_positions"]
+            position_tensor = data["target_positions"].to(self.device)
             vel_tensor, accel_tensor = self._track_kinetics_(target_id_tensor=ids, target_position_tensor=position_tensor)
 
-            yaw_tensor = data["target_yaws"]
-
-            # agent_vector = torch.cat([data["target_positions"], data["target_yaws"]], 2).to(device=self.device)
-            # history_vector = torch.cat([data["history_positions"], data["history_yaws"]], 2).to(device=self.device)
-
-            # state_vector = torch.cat([agent_vector, history_vector], 1)
-            # state_vector = torch.cat([[position_tensor, vel_tensor, accel_tensor, yaw_tensor]], 2).to(device=self.device)
-
-            # image_tensor = torch.Tensor(data["image"]).permute(2, 0, 1).unsqueeze(0).to(device=self.device)
+            yaw_tensor = data["target_yaws"].to(self.device)
 
             inputData = data["image"].to(self.device)
-            inputData = torch.ones(1, 3, 500, 500).to(self.device)
-            print(inputData.shape)
+            if self.verbose:
+                print("Image Tensor: ", inputData.shape)
 
-            pred = self.model.forward(inputData, torch.ones(1, 6).to(device=self.device))
-            prob = 1
+            state_vector = torch.cat([position_tensor, vel_tensor, accel_tensor, yaw_tensor], 2).to(self.device)
+            state_vector = torch.flatten(state_vector, 1).to(self.device)
+            if self.verbose:
+                print("State Vector: ", state_vector.shape)
 
-            print("Prediction: ", pred.shape)
-            print("Probability: ", prob.shape)
+            pred, conf = self.model.forward(inputData, state_vector)
 
-            loss = self.lossModel(pred, data["target_positions"])
+            if self.verbose:
+                print("Prediction: ", pred.shape)
+                print("Probability: ", conf.shape)
+
+            target_availabilities = data["target_availabilities"].unsqueeze(-1).to(self.device)
+
+            flattenedTargets = torch.flatten(target_availabilities, 1, 2)
+
+            loss = pytorch_neg_multi_log_likelihood_batch(position_tensor, pred, conf, flattenedTargets)
+
+            # loss = self.lossModel(pred, data["target_positions"])
+
 
             # Backward pass
             optimizer.zero_grad()
@@ -186,40 +166,3 @@ class MTPManager:
 
         return vel, accel
 
-
-
-
-def trim_network_at_index(network: nn.Module, index: int = -1) -> nn.Module:
-    """
-    Returns a new network with all layers up to index from the back.
-    :param network: Module to trim.
-    :param index: Where to trim the network. Counted from the last layer.
-    """
-    assert index < 0, f"Param index must be negative. Received {index}."
-    return nn.Sequential(*list(network.children())[:index])
-
-class MnasBackbone(nn.Module):
-    """
-    Outputs tensor after last convolution before the fully connected layer.
-
-    Allowed versions: mobilenet_v2.
-    """
-
-    def __init__(self):
-        """
-        Inits MobileNetBackbone.
-        :param version: mobilenet version to use.
-        """
-        super().__init__()
-
-        self.backbone = trim_network_at_index(mnasnet1_3(), -1)
-
-    def forward(self, input_tensor: torch.Tensor) -> torch.Tensor:
-        """
-        Outputs features after last convolution.
-        :param input_tensor:  Shape [batch_size, n_channels, length, width].
-        :return: Tensor of shape [batch_size, n_convolution_filters]. For mobilenet_v2,
-            the shape is [batch_size, 1280].
-        """
-        backbone_features = self.backbone(input_tensor)
-        return backbone_features.mean([2, 3])

@@ -69,6 +69,9 @@ to train models that can recover from slight divergence from training set data
         dict: a dict object with the raster array, the future offset coordinates (meters),
         the future yaw angular offset, the future_availability as a binary mask
     """
+
+    agent_velocity = None
+
     #  the history slice is ordered starting from the latest frame and goes backward in time., ex. slice(100, 91, -2)
     history_slice = get_history_slice(state_index, history_num_frames, history_step_size, include_current_state=True)
     future_slice = get_future_slice(state_index, future_num_frames, future_step_size)
@@ -105,6 +108,11 @@ to train models that can recover from slight divergence from training set data
 
     if selected_track_id is None:
         agent_centroid = cur_frame["ego_translation"][:2]
+
+        # FIXME
+        # Assume velocity was 0, but it probably shouldnt be
+        agent_velocity = np.array([0, 0], dtype=np.float32)
+
         agent_yaw = rotation33_as_yaw(cur_frame["ego_rotation"])
         agent_extent = np.asarray((EGO_EXTENT_LENGTH, EGO_EXTENT_WIDTH, EGO_EXTENT_HEIGHT))
         selected_agent = None
@@ -118,6 +126,7 @@ to train models that can recover from slight divergence from training set data
         except IndexError:
             raise ValueError(f" track_id {selected_track_id} not in frame or below threshold")
         agent_centroid = agent["centroid"]
+        agent_velocity = agent["velocity"]
         agent_yaw = float(agent["yaw"])
         agent_extent = agent["extent"]
         selected_agent = agent
@@ -136,18 +145,22 @@ to train models that can recover from slight divergence from training set data
         ego_center_in_image_ratio=ego_center,
     )
 
-    future_coords_offset, future_yaws_offset, future_availability = _create_targets_for_deep_prediction(
-        future_num_frames, future_frames, selected_track_id, future_agents, agent_centroid[:2], agent_yaw,
+    future_coords_offset, future_vel_offset, future_accel_offset,future_yaws_offset, future_availability = _create_targets_for_deep_prediction(
+        future_num_frames, future_frames, selected_track_id, future_agents, agent_centroid[:2], agent_velocity[:2],
+        agent_yaw,
     )
 
     # history_num_frames + 1 because it also includes the current frame
-    history_coords_offset, history_yaws_offset, history_availability = _create_targets_for_deep_prediction(
-        history_num_frames + 1, history_frames, selected_track_id, history_agents, agent_centroid[:2], agent_yaw,
+    history_coords_offset, _, _, history_yaws_offset, history_availability = _create_targets_for_deep_prediction(
+        history_num_frames + 1, history_frames, selected_track_id, history_agents, agent_centroid[:2], agent_velocity,
+        agent_yaw,
     )
 
     return {
         "image": input_im,
         "target_positions": future_coords_offset,
+        "target_velocities": future_vel_offset,
+        "target_accelerations": future_accel_offset,
         "target_yaws": future_yaws_offset,
         "target_availabilities": future_availability,
         "history_positions": history_coords_offset,
@@ -166,8 +179,9 @@ def _create_targets_for_deep_prediction(
     selected_track_id: Optional[int],
     agents: List[np.ndarray],
     agent_current_centroid: np.ndarray,
+    agent_current_velocity: np.ndarray,
     agent_current_yaw: float,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Internal function that creates the targets and availability masks for deep prediction-type models.
     The futures/history offset (in meters) are computed. When no info is available (e.g. agent not in frame)
@@ -187,6 +201,8 @@ def _create_targets_for_deep_prediction(
     """
     # How much the coordinates differ from the current state in meters.
     coords_offset = np.zeros((num_frames, 2), dtype=np.float32)
+    vel_offset = np.zeros((num_frames, 2), dtype=np.float32)
+    accel_offset = np.zeros((num_frames, 2), dtype=np.float32)
     yaws_offset = np.zeros((num_frames, 1), dtype=np.float32)
     availability = np.zeros((num_frames,), dtype=np.float32)
 
@@ -194,6 +210,7 @@ def _create_targets_for_deep_prediction(
         if selected_track_id is None:
             agent_centroid = frame["ego_translation"][:2]
             agent_yaw = rotation33_as_yaw(frame["ego_rotation"])
+            agent_velocity = np.array([0, 0], dtype=np.float32)
         else:
             # it's not guaranteed the target will be in every frame
             try:
@@ -203,9 +220,17 @@ def _create_targets_for_deep_prediction(
                 continue
 
             agent_centroid = agent["centroid"]
+            agent_velocity = agent["velocity"]
             agent_yaw = agent["yaw"]
 
         coords_offset[i] = agent_centroid - agent_current_centroid
+        vel_offset[i] = agent_velocity - agent_current_velocity
+        # print(coords_offset[i], vel_offset[i])
+        if coords_offset[i].all() == 0.0:
+            accel_offset[i] = coords_offset[i]
+        else:
+            accel_offset[i] = (agent_velocity ** 2 - agent_current_velocity ** 2) / (2 * coords_offset[i])
+
         yaws_offset[i] = agent_yaw - agent_current_yaw
         availability[i] = 1.0
-    return coords_offset, yaws_offset, availability
+    return coords_offset, vel_offset, accel_offset, yaws_offset, availability

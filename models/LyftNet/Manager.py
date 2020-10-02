@@ -5,7 +5,7 @@ from models.resnet152.loss_functions import pytorch_neg_multi_log_likelihood_bat
 from l5kit.data import LocalDataManager, ChunkedDataset
 from l5kit.rasterization import build_rasterizer
 # from l5kit.dataset import AgentDataset
-from models.LyftNet.KineticDataset import KineticDataset
+from models.LyftNet.Kinetic.KineticDataset import KineticDataset
 
 from torch.utils.data import DataLoader
 
@@ -54,7 +54,7 @@ class LyftManager:
         self.lossModel = LyftLoss(num_modes=num_modes)
         self.model.to(device=self.device)
 
-    def train(self, iterations, lr=1e-3, file_name="mtp.pth"):
+    def train(self, iterations, lr=1e-3, file_name="lyft-net.pth"):
 
         # set env variable for data
         os.environ["L5KIT_DATA_FOLDER"] = self.data_path
@@ -116,7 +116,9 @@ class LyftManager:
 
             ids = data["track_id"]
             position_tensor = data["target_positions"].to(self.device)
-            vel_tensor, accel_tensor = self._track_kinetics_(target_id_tensor=ids, target_position_tensor=position_tensor)
+            velocity_tensor = data["target_velocities"].to(self.device)
+            acceleration_tensor = data["target_accelerations"].to(self.device)
+            # print(acceleration_tensor)
 
             yaw_tensor = data["target_yaws"].to(self.device)
 
@@ -124,7 +126,8 @@ class LyftManager:
             if self.verbose:
                 print("Image Tensor: ", inputData.shape)
 
-            state_vector = torch.cat([position_tensor, vel_tensor, accel_tensor, yaw_tensor], 2).to(self.device)
+            state_vector = torch.cat([position_tensor, velocity_tensor,
+                                      acceleration_tensor, yaw_tensor], 2).to(self.device)
             state_vector = torch.flatten(state_vector, 1).to(self.device)
             if self.verbose:
                 print("State Vector: ", state_vector.shape)

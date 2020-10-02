@@ -48,12 +48,14 @@ class LyftNet(nn.Module):
         self.backbone = backbone
         self.num_modes = num_modes
         backbone_feature_dim = calculate_backbone_feature_dim(backbone, input_shape)
-        self.fc1 = nn.Linear(backbone_feature_dim + self.ASV_DIM, n_hidden_layers)
+        self.fc1 = nn.Linear(backbone_feature_dim + self.ASV_DIM, n_hidden_layers, bias=True)
         # predictions_per_mode = int(seconds * frequency_in_hz) * 2
         predictions_per_mode = num_targets
 
         self.num_pred = predictions_per_mode * num_modes
         self.future_len = int(num_targets / 2)
+
+        self.norm = nn.BatchNorm1d(self.ASV_DIM)
 
         self.fc2 = nn.Linear(n_hidden_layers, int(self.num_pred + num_modes))
 
@@ -71,7 +73,7 @@ class LyftNet(nn.Module):
 
         backbone_features = self.backbone(image_tensor)
 
-        features = torch.cat([backbone_features, agent_state_vector], dim=1)
+        features = torch.cat([backbone_features, self.norm(agent_state_vector)], dim=1)
 
         predictions = self.fc2(self.fc1(features))
 
@@ -83,6 +85,15 @@ class LyftNet(nn.Module):
         assert confidences.shape == (bs, self.num_modes)
 
         confidences = torch.softmax(confidences, dim=1)
+
+        # print(self.fc1.weight)
+        # print("---------------")
+
+        # nn.utils.clip_grad_norm_()
+
+        if math.isnan(confidences[0][0].item()):
+            print("Oh no, not the naan")
+            print(agent_state_vector)
 
         return pred, confidences
 

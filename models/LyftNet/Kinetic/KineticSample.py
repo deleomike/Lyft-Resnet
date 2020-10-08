@@ -145,15 +145,15 @@ to train models that can recover from slight divergence from training set data
         ego_center_in_image_ratio=ego_center,
     )
 
-    future_coords_offset, future_vel_offset, future_accel_offset,future_yaws_offset, future_availability = _create_targets_for_deep_prediction(
+    future_coords_offset, future_vel_offset, future_accel_offset, _, future_yaws_offset, future_availability = _create_targets_for_deep_prediction(
         future_num_frames, future_frames, selected_track_id, future_agents, agent_centroid[:2], agent_velocity[:2],
         agent_yaw,
     )
 
     # history_num_frames + 1 because it also includes the current frame
-    history_coords_offset, _, _, history_yaws_offset, history_availability = _create_targets_for_deep_prediction(
-        history_num_frames + 1, history_frames, selected_track_id, history_agents, agent_centroid[:2], agent_velocity,
-        agent_yaw,
+    history_coords_offset, history_vel_offset, history_accel_offset, history_jerk_offset, history_yaws_offset, \
+    history_availability = _create_targets_for_deep_prediction(history_num_frames + 1, history_frames,
+        selected_track_id, history_agents, agent_centroid[:2], agent_velocity[:2], agent_yaw,
     )
 
     return {
@@ -164,6 +164,8 @@ to train models that can recover from slight divergence from training set data
         "target_yaws": future_yaws_offset,
         "target_availabilities": future_availability,
         "history_positions": history_coords_offset,
+        "history_velocities": history_vel_offset,
+        "history_accelerations": history_accel_offset,
         "history_yaws": history_yaws_offset,
         "history_availabilities": history_availability,
         "world_to_image": world_to_image_space,
@@ -181,7 +183,7 @@ def _create_targets_for_deep_prediction(
     agent_current_centroid: np.ndarray,
     agent_current_velocity: np.ndarray,
     agent_current_yaw: float,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Internal function that creates the targets and availability masks for deep prediction-type models.
     The futures/history offset (in meters) are computed. When no info is available (e.g. agent not in frame)
@@ -199,10 +201,20 @@ def _create_targets_for_deep_prediction(
         Tuple[np.ndarray, np.ndarray, np.ndarray]: position offsets, angle offsets, availabilities
 
     """
+    #TODO: JERK
+
+    # Inclusively count the number of available and unavailable frames of this target
+    num_avail = 0
+    num_unavail = 0
+
+    last_avail_index = -1
+    last_unavail_index = -1
+
     # How much the coordinates differ from the current state in meters.
     coords_offset = np.zeros((num_frames, 2), dtype=np.float32)
     vel_offset = np.zeros((num_frames, 2), dtype=np.float32)
     accel_offset = np.zeros((num_frames, 2), dtype=np.float32)
+    jerk_offset = np.zeros((num_frames, 2), dtype=np.float32)
     yaws_offset = np.zeros((num_frames, 1), dtype=np.float32)
     availability = np.zeros((num_frames,), dtype=np.float32)
 
@@ -211,26 +223,113 @@ def _create_targets_for_deep_prediction(
             agent_centroid = frame["ego_translation"][:2]
             agent_yaw = rotation33_as_yaw(frame["ego_rotation"])
             agent_velocity = np.array([0, 0], dtype=np.float32)
+
+            num_avail = num_avail + 1
         else:
             # it's not guaranteed the target will be in every frame
             try:
                 agent = filter_agents_by_track_id(agents, selected_track_id)[0]
+                num_avail = num_avail + 1
             except IndexError:
                 availability[i] = 0.0  # keep track of invalid futures/history
+                last_unavail_index = i
+                num_unavail = num_unavail + 1
                 continue
 
             agent_centroid = agent["centroid"]
             agent_velocity = agent["velocity"]
             agent_yaw = agent["yaw"]
 
+        #TODO: change my kinetics to the format of
+        # offset for time[i] - time[0]
+        # So tidy up the velocity calculation process, and the acceleration stuff
+        # time 0 state, and time > 0 state. and make the calculations with respect to time passed and the time 0 val
+        # Also provide a means of getting change in time
+
+        # Note: B is an initial case
+        # State A: the boy scout case. All clean, no trouble
+        #   Two or more positions, previous frame is available
+        # State B: One or none positions
+        # State C: Two or more positions, previous frame is unavail
+
         coords_offset[i] = agent_centroid - agent_current_centroid
-        vel_offset[i] = agent_velocity - agent_current_velocity
-        # print(coords_offset[i], vel_offset[i])
-        if coords_offset[i].all() == 0.0:
-            accel_offset[i] = coords_offset[i]
+
+        # STATE B
+        if num_avail == 1:
+            # There is only the current position, no velocity is possible
+            vel_offset[i] = agent_current_velocity
+            accel_offset[i] = np.array([0, 0], dtype=np.float32)
+            jerk_offset[i] = np.array([0, 0], dtype=np.float32)
+
+        # there are two or more positions
+        # There has been no unavailabilities yet
+        elif last_unavail_index == -1:
+            # STATE A
+            # Only 1 frame difference in time
+            dx = coords_offset[i] - coords_offset[i - 1]
+            dt = 0.1
+
+            vel_offset[i] = dx / dt  # change in position / frame width (0.1 seconds) : [m/s]
+            accel_offset[i] = (agent_velocity ** 2 - vel_offset[i - 1] ** 2) / (2 * dx)
+            jerk_offset[i] = (accel_offset[i] - accel_offset[i - 1]) / dt
+
+        # Unavailability was previous frame
+        elif last_unavail_index == i - 1:
+            # Check number of positions
+            # STATE C
+            # There are positions before the unavailability, calculate the velocity
+            # Get previous existing velocity
+            prev_vel = vel_offset[last_avail_index]
+
+            # Get previous existing position
+            prev_pos = coords_offset[last_avail_index]
+
+            # Current Position
+            pos = coords_offset[i]
+
+            # Delta X
+            dx = pos - prev_pos
+
+            # Delta Time...0.1 being the frame width
+            dt = (i - last_avail_index) * 0.1
+
+            # Calculate velocity
+            vel = (dx / dt) * - prev_vel
+            vel_offset[i] = vel
+
+            # Now calculate acceleration
+            accel_offset[i] = (((dx - prev_vel * dt) * 2) ** (1/2)) / dt
+
+            # Now Jerk
+            jerk_offset[i] = (accel_offset[i] - accel_offset[last_avail_index]) / dt
+
         else:
-            accel_offset[i] = (agent_velocity ** 2 - agent_current_velocity ** 2) / (2 * coords_offset[i])
+            # STATE A
+            # Only 1 frame difference in time
+            dx = coords_offset[i] - coords_offset[i - 1]
+            dt = 0.1
+
+            vel_offset[i] = dx / dt  # change in position / frame width (0.1 seconds) : [m/s]
+            accel_offset[i] = (agent_velocity ** 2 - vel_offset[i - 1] ** 2) / (2 * dx)
+            jerk_offset[i] = (accel_offset[i] - accel_offset[i - 1]) / dt
+        # else:
+        #
+        #     # Attempt to get previous velocity
+        #     if i == 0:
+        #         # No previous velocity
+        #         prev_vel = np.array([0, 0], dtype=np.float32)
+        #     else:
+        #         # There must be a previous velocity
+        #         prev_vel = vel_offset[i - 1]
+        #
+        #     # Calculate the acceleration
+        #     accel_offset[i] = (vel_offset[i] ** 2 - prev_vel ** 2) / (2 * coords_offset[i])
+        # else:
+        #     accel_offset[i] = (agent_velocity ** 2 - agent_current_velocity ** 2) / (2 * coords_offset[i])
 
         yaws_offset[i] = agent_yaw - agent_current_yaw
         availability[i] = 1.0
-    return coords_offset, vel_offset, accel_offset, yaws_offset, availability
+
+        # save this index as the last available index
+        last_avail_index = i
+    return coords_offset, vel_offset, accel_offset, jerk_offset, yaws_offset, availability

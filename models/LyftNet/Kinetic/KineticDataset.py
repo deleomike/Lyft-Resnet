@@ -77,6 +77,8 @@ class KineticDataset(AgentDataset):
         target_yaws = np.array(data["target_yaws"], dtype=np.float32)
 
         history_positions = np.array(data["history_positions"], dtype=np.float32)
+        history_velocities = np.array(data["history_velocities"], dtype=np.float32)
+        history_accelerations = np.array(data["history_accelerations"], dtype=np.float32)
         history_yaws = np.array(data["history_yaws"], dtype=np.float32)
 
         timestamp = frames[state_index]["timestamp"]
@@ -90,6 +92,8 @@ class KineticDataset(AgentDataset):
             "target_yaws": target_yaws,
             "target_availabilities": data["target_availabilities"],
             "history_positions": history_positions,
+            "history_velocities": history_velocities,
+            "history_accelerations": history_accelerations,
             "history_yaws": history_yaws,
             "history_availabilities": data["history_availabilities"],
             "world_to_image": data["world_to_image"],

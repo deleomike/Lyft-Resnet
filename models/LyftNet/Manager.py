@@ -1,10 +1,11 @@
 from models.LyftNet.LyftNet import LyftNet, LyftLoss
 from models.LyftNet.MNASBackbone import MnasBackbone
 from models.resnet152.loss_functions import pytorch_neg_multi_log_likelihood_batch
+from l5kit.evaluation import write_pred_csv
 
 from l5kit.data import LocalDataManager, ChunkedDataset
 from l5kit.rasterization import build_rasterizer
-# from l5kit.dataset import AgentDataset
+from l5kit.dataset import AgentDataset
 from models.LyftNet.Kinetic.KineticDataset import KineticDataset
 
 from torch.utils.data import DataLoader
@@ -16,6 +17,8 @@ from tqdm import tqdm
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
+
+import gc
 
 import pandas as pd
 
@@ -48,7 +51,7 @@ class LyftManager:
         self.num_preds = num_targets * num_modes
         self.num_modes = num_modes
 
-        self.model = LyftNet(self.backbone, num_modes=num_modes, num_kinetic_dim=7 * self.future_len,
+        self.model = LyftNet(self.backbone, num_modes=num_modes, num_kinetic_dim=8 * (self.cfg["model_params"]["history_num_frames"] + 1),
                              num_targets=num_targets, input_shape=(num_in_channels, raster_size[0], raster_size[1]))
 
         self.lossModel = LyftLoss(num_modes=num_modes)
@@ -93,7 +96,7 @@ class LyftManager:
 
         # ==== INIT MODEL parameters
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
-        criterion = nn.MSELoss(reduction="none")
+        criterion = nn.PoissonNLLLoss()
 
         # ==== TRAIN LOOP
 
@@ -118,21 +121,30 @@ class LyftManager:
             position_tensor = data["target_positions"].to(self.device)
             velocity_tensor = data["target_velocities"].to(self.device)
             acceleration_tensor = data["target_accelerations"].to(self.device)
-            # print(acceleration_tensor)
-
             yaw_tensor = data["target_yaws"].to(self.device)
 
-            inputData = data["image"].to(self.device)
-            if self.verbose:
-                print("Image Tensor: ", inputData.shape)
+            history_position_tensor = data["history_positions"].to(self.device)
+            history_velocity_tensor = data["history_velocities"].to(self.device)
+            history_acceleration_tensor = data["history_accelerations"].to(self.device)
+            history_yaw_tensor = data["history_yaws"].to(self.device)
+            history_availability = data["history_availabilities"].to(self.device)
 
-            state_vector = torch.cat([position_tensor, velocity_tensor,
-                                      acceleration_tensor, yaw_tensor], 2).to(self.device)
+            imageTensor = data["image"].to(self.device)
+            if self.verbose:
+                print("Image Tensor: ", imageTensor.shape)
+
+            state_vector = torch.cat([history_position_tensor, history_velocity_tensor, history_acceleration_tensor,
+                                      history_yaw_tensor], 2).to(self.device)
+
             state_vector = torch.flatten(state_vector, 1).to(self.device)
             if self.verbose:
                 print("State Vector: ", state_vector.shape)
 
-            pred, conf = self.model.forward(inputData, state_vector)
+            pred, conf = self.model.forward(imageTensor, state_vector)
+
+            # loss2 = criterion(pred, position_tensor)
+
+            # print(loss2)
 
             if self.verbose:
                 print("Prediction: ", pred.shape)
@@ -162,10 +174,115 @@ class LyftManager:
         print("Done Training")
         torch.save(self.model.state_dict(), f"/home/michael/Workspace/Lyft/model/{file_name}")
 
+    def evaluate(self, data_path, file_name="submission.csv"):
 
-    def _track_kinetics_(self, target_id_tensor, target_position_tensor):
-        vel = target_position_tensor
-        accel = target_position_tensor
+        # set env variable for data
+        os.environ["L5KIT_DATA_FOLDER"] = data_path
+        dm = LocalDataManager(None)
 
-        return vel, accel
+        cfg = self.cfg
+
+        # ===== INIT DATASET
+        test_cfg = cfg["test_data_loader"]
+
+        # Rasterizer
+        rasterizer = build_rasterizer(cfg, dm)
+
+        # Test dataset/dataloader
+        test_zarr = ChunkedDataset(dm.require(test_cfg["key"])).open()
+        test_mask = np.load(f"{data_path}/scenes/mask.npz")["arr_0"]
+        # test_dataset = AgentDataset(cfg, test_zarr, rasterizer, agents_mask=test_mask)
+        test_dataset = KineticDataset(cfg, test_zarr, rasterizer, agents_mask=test_mask)
+        test_dataloader = DataLoader(test_dataset,
+                                     shuffle=test_cfg["shuffle"],
+                                     batch_size=test_cfg["batch_size"],
+                                     num_workers=test_cfg["num_workers"])
+        test_dataloader = test_dataloader
+        print(test_dataloader)
+
+        # ==== EVAL LOOP
+        self.model.eval()
+        torch.set_grad_enabled(False)
+        criterion = nn.MSELoss(reduction="none")
+
+        # store information for evaluation
+        future_coords_offsets_pd = []
+        timestamps = []
+        pred_coords =  []
+        confidences_list = []
+
+        agent_ids = []
+        progress_bar = tqdm(test_dataloader)
+        for data in progress_bar:
+
+            position_tensor = data["target_positions"].to(self.device)
+            velocity_tensor = data["target_velocities"].to(self.device)
+            acceleration_tensor = data["target_accelerations"].to(self.device)
+            yaw_tensor = data["target_yaws"].to(self.device)
+
+            history_position_tensor = data["history_positions"].to(self.device)
+            history_velocity_tensor = data["history_velocities"].to(self.device)
+            history_acceleration_tensor = data["history_accelerations"].to(self.device)
+            history_yaw_tensor = data["history_yaws"].to(self.device)
+            history_availability = data["history_availabilities"].to(self.device)
+
+            # print(history_availability)
+
+            imageTensor = data["image"].to(self.device)
+            if self.verbose:
+                print("Image Tensor: ", imageTensor.shape)
+
+            state_vector = torch.cat([history_position_tensor, history_velocity_tensor, history_acceleration_tensor,
+                                      history_yaw_tensor], 2).to(self.device)
+
+            state_vector = torch.flatten(state_vector, 1).to(self.device)
+            # print(state_vector)
+            if self.verbose:
+                print("State Vector: ", state_vector.shape)
+
+            pred, confidences = self.model.forward(imageTensor, state_vector)
+
+            # future_coords_offsets_pd.append(outputs.cpu().numpy().copy())
+            timestamps.append(data["timestamp"].numpy().copy())
+            agent_ids.append(data["track_id"].numpy().copy())
+            #
+            # pred, confidences = predictor(image)
+
+            pred_coords.append(pred.cpu().numpy().copy())
+            confidences_list.append(confidences.cpu().numpy().copy())
+
+        # ==== Save Results
+        pred_path = f"{os.getcwd()}/{file_name}"
+        write_pred_csv(pred_path,
+                       timestamps=np.concatenate(timestamps),
+                       track_ids=np.concatenate(agent_ids),
+                       coords=np.concatenate(pred_coords),
+                       confs=np.concatenate(confidences_list))
+
+        torch.cuda.empty_cache()
+
+    def load(self, checkpoint_path:str):
+
+        state_dict = torch.load(checkpoint_path, map_location=self.device)
+        self.model.load_state_dict(state_dict)
+
+    # def clean(self):  # DOES WORK
+    #     self._optimizer_to(torch.device('cuda:0'))
+    #     del self.optimizer
+    #     gc.collect()
+    #     torch.cuda.empty_cache()
+    #
+    # def _optimizer_to(self, device):
+    #     for param in self.optimizer.state.values():
+    #         # Not sure there are any global tensors in the state dict
+    #         if isinstance(param, torch.Tensor):
+    #             param.data = param.data.to(device)
+    #             if param._grad is not None:
+    #                 param._grad.data = param._grad.data.to(device)
+    #         elif isinstance(param, dict):
+    #             for subparam in param.values():
+    #                 if isinstance(subparam, torch.Tensor):
+    #                     subparam.data = subparam.data.to(device)
+    #                     if subparam._grad is not None:
+    #                         subparam._grad.data = subparam._grad.data.to(device)
 

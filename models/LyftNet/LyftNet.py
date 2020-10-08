@@ -60,7 +60,8 @@ class LyftNet(nn.Module):
         self.fc2 = nn.Linear(n_hidden_layers, int(self.num_pred + num_modes))
 
     def forward(self, image_tensor: torch.Tensor,
-                agent_state_vector: torch.Tensor) -> torch.Tensor:
+                estimated_state_vector: torch.Tensor,
+                history_state_vector: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the model.
         :param image_tensor: Tensor of images shape [batch_size, n_channels, length, width].

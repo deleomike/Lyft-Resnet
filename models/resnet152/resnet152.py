@@ -154,7 +154,7 @@ class MultiModalModel(nn.Module):
 
         #return loss, confidences, pred, metrics
 
-    def evaluate(self, data_path):
+    def evaluate(self, data_path, file_name="submission.csv"):
 
         # set env variable for data
         os.environ["L5KIT_DATA_FOLDER"] = data_path
@@ -205,7 +205,7 @@ class MultiModalModel(nn.Module):
             confidences_list.append(confidences.cpu().numpy().copy())
 
         # ==== Save Results
-        pred_path = f"{os.getcwd()}/submission.csv"
+        pred_path = f"{os.getcwd()}/{file_name}"
         write_pred_csv(pred_path,
                        timestamps=np.concatenate(timestamps),
                        track_ids=np.concatenate(agent_ids),

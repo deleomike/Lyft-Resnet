@@ -27,6 +27,8 @@ def pytorch_neg_multi_log_likelihood_batch(
 
     assert gt.shape == (batch_size, future_len, num_coords), f"expected 2D (Time x Coords) array for gt, got {gt.shape}"
     assert confidences.shape == (batch_size, num_modes), f"expected 1D (Modes) array for gt, got {confidences.shape}"
+    if not torch.allclose(torch.sum(confidences, dim=1), confidences.new_ones((batch_size,))):
+        print(confidences)
     assert torch.allclose(torch.sum(confidences, dim=1), confidences.new_ones((batch_size,))), "confidences should sum to 1"
     assert avails.shape == (batch_size, future_len), f"expected 1D (Time) array for gt, got {avails.shape}"
     # assert all data are valid

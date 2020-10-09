@@ -15,8 +15,8 @@ manager = Manager(config=config, data_path=data_path, device=device, num_modes=3
 
 # manager.load(checkpoint_path)
 
-#toto train for 52000
+#toto train for 324000
 # manager.train(iterations=44000, lr=1e-4, file_name="lyft-net.pth")
-manager.train(iterations=264000, lr=1e-4, file_name="lyft-net.pth")
+manager.train(iterations=324000, lr=1e-4, file_name="lyft-net.pth")
 
 manager.evaluate(data_path=data_path)

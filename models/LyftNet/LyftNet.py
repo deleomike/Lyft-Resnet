@@ -55,13 +55,12 @@ class LyftNet(nn.Module):
         self.num_pred = predictions_per_mode * num_modes
         self.future_len = int(num_targets / 2)
 
-        self.norm = nn.BatchNorm1d(self.ASV_DIM)
+        # self.norm = nn.BatchNorm1d(self.ASV_DIM)
 
         self.fc2 = nn.Linear(n_hidden_layers, int(self.num_pred + num_modes))
 
     def forward(self, image_tensor: torch.Tensor,
-                estimated_state_vector: torch.Tensor,
-                history_state_vector: torch.Tensor) -> torch.Tensor:
+                agent_state_vector: torch.Tensor) -> torch.Tensor:
         """
         Forward pass of the model.
         :param image_tensor: Tensor of images shape [batch_size, n_channels, length, width].
@@ -74,7 +73,7 @@ class LyftNet(nn.Module):
 
         backbone_features = self.backbone(image_tensor)
 
-        features = torch.cat([backbone_features, self.norm(agent_state_vector)], dim=1)
+        features = torch.cat([backbone_features, (agent_state_vector)], dim=1)
 
         predictions = self.fc2(self.fc1(features))
 

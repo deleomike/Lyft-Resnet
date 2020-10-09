@@ -55,7 +55,7 @@ test_data_loader:
   key: "scenes/test.zarr"
   batch_size: 75
   shuffle: False
-  num_workers: 32
+  num_workers: 16
 
 ###################
 ## Train params

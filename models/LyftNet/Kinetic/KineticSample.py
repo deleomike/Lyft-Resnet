@@ -156,6 +156,13 @@ to train models that can recover from slight divergence from training set data
         selected_track_id, history_agents, agent_centroid[:2], agent_velocity[:2], agent_yaw,
     )
 
+    # estimated_future_positions = history_jerk_offset
+    estimated_future_positions = _extrapolate_targets(future_num_frames, history_num_frames, history_coords_offset,
+                                                      history_vel_offset, history_accel_offset, history_jerk_offset)
+
+    error_arr = np.abs(estimated_future_positions - future_coords_offset[10:])
+    error = np.average(error_arr)
+
     return {
         "image": input_im,
         "target_positions": future_coords_offset,
@@ -168,11 +175,55 @@ to train models that can recover from slight divergence from training set data
         "history_accelerations": history_accel_offset,
         "history_yaws": history_yaws_offset,
         "history_availabilities": history_availability,
+        "estimated_future_positions": estimated_future_positions,
         "world_to_image": world_to_image_space,
         "centroid": agent_centroid,
         "yaw": agent_yaw,
         "extent": agent_extent,
     }
+
+
+def _extrapolate_targets(future_num_frames: int, history_num_frames: int, position_history: np.ndarray,
+                         vel_history: np.ndarray, accel_history: np.ndarray, jerk_history: np.ndarray) -> np.ndarray:
+    """
+    Extrapolates future positions using the first, second, and third derivatives of position
+
+    hehe not really extrapolation, but I'm just doing some estimation atm
+
+    :param future_num_frames:
+    :param position_history:
+    :param vel_history:
+    :param accel_history:
+    :param jerk_history:
+    :return: Extrapolated future positions - (future-history x 2)
+    """
+
+    dt = 0.1
+
+    start_time = len(position_history) * dt
+
+    predict_frames = future_num_frames - history_num_frames
+
+    time_arr = np.arange(dt, predict_frames * dt + dt, dt)
+
+    avg_vel = np.array([np.average(vel_history.T[0]), np.average(vel_history.T[1])])
+    avg_acc = np.array([np.average(accel_history.T[0]), np.average(accel_history.T[1])])
+    avg_jrk = np.array([np.average(jerk_history.T[0]), np.average(jerk_history.T[1])])
+
+    pos = np.array([position_history[-1]]).T
+    vel = np.array([avg_vel]).T
+    accel = np.array([avg_acc]).T
+    jerk = np.array([avg_jrk]).T
+    # vel = np.array([vel_history[-1]]).T
+    # accel = np.array([accel_history[-1]]).T
+    # jerk = np.array([jerk_history[-1]]).T
+
+    # s =  	s0 + v0t + ½a0t2 + ⅙jt3
+    res = pos * np.ones(time_arr.shape) + vel * time_arr + (accel * time_arr ** 2)/2 + (jerk * time_arr ** 3) / 6
+
+    return res.T
+
+
 
 
 def _create_targets_for_deep_prediction(
@@ -270,7 +321,8 @@ def _create_targets_for_deep_prediction(
             dt = 0.1
 
             vel_offset[i] = dx / dt  # change in position / frame width (0.1 seconds) : [m/s]
-            accel_offset[i] = (agent_velocity ** 2 - vel_offset[i - 1] ** 2) / (2 * dx)
+            # accel_offset[i] = (agent_velocity ** 2 - vel_offset[i - 1] ** 2) / (2 * dx)
+            accel_offset[i] = (vel_offset[i] - vel_offset[i - 1]) / dt
             jerk_offset[i] = (accel_offset[i] - accel_offset[i - 1]) / dt
 
         # Unavailability was previous frame

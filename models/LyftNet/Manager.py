@@ -1,6 +1,6 @@
 from models.LyftNet.LyftNet import LyftNet, LyftLoss
 from models.LyftNet.MNASBackbone import MnasBackbone
-from models.resnet152.loss_functions import pytorch_neg_multi_log_likelihood_batch
+from models.resnet152.loss_functions import pytorch_neg_multi_log_likelihood_batch, pytorch_neg_multi_log_likelihood_single
 from l5kit.evaluation import write_pred_csv
 
 from l5kit.data import LocalDataManager, ChunkedDataset
@@ -51,7 +51,7 @@ class LyftManager:
         self.num_preds = num_targets * num_modes
         self.num_modes = num_modes
 
-        self.model = LyftNet(self.backbone, num_modes=num_modes, num_kinetic_dim=8 * (self.cfg["model_params"]["history_num_frames"] + 1),
+        self.model = LyftNet(self.backbone, num_modes=num_modes, num_kinetic_dim=2 * (self.future_len + 1),
                              num_targets=num_targets, input_shape=(num_in_channels, raster_size[0], raster_size[1]))
 
         self.lossModel = LyftLoss(num_modes=num_modes)
@@ -117,24 +117,27 @@ class LyftManager:
             ####################
             # this is where it gets real funky
 
-            ids = data["track_id"]
+            # ids = data["track_id"]
             position_tensor = data["target_positions"].to(self.device)
-            velocity_tensor = data["target_velocities"].to(self.device)
-            acceleration_tensor = data["target_accelerations"].to(self.device)
-            yaw_tensor = data["target_yaws"].to(self.device)
+            # velocity_tensor = data["target_velocities"].to(self.device)
+            # acceleration_tensor = data["target_accelerations"].to(self.device)
+            # yaw_tensor = data["target_yaws"].to(self.device)
 
             history_position_tensor = data["history_positions"].to(self.device)
-            history_velocity_tensor = data["history_velocities"].to(self.device)
-            history_acceleration_tensor = data["history_accelerations"].to(self.device)
-            history_yaw_tensor = data["history_yaws"].to(self.device)
-            history_availability = data["history_availabilities"].to(self.device)
+            estimated_future_positions = data["estimated_future_positions"].to(self.device)
+            # history_velocity_tensor = data["history_velocities"].to(self.device)
+            # history_acceleration_tensor = data["history_accelerations"].to(self.device)
+            # history_yaw_tensor = data["history_yaws"].to(self.device)
+            # history_availability = data["history_availabilities"].to(self.device)
 
             imageTensor = data["image"].to(self.device)
             if self.verbose:
                 print("Image Tensor: ", imageTensor.shape)
 
-            state_vector = torch.cat([history_position_tensor, history_velocity_tensor, history_acceleration_tensor,
-                                      history_yaw_tensor], 2).to(self.device)
+            # state_vector = torch.cat([history_position_tensor, history_velocity_tensor, history_acceleration_tensor,
+            #                           history_yaw_tensor], 2).to(self.device)
+
+            state_vector = torch.cat([estimated_future_positions, history_position_tensor], 1).to(self.device)
 
             state_vector = torch.flatten(state_vector, 1).to(self.device)
             if self.verbose:
@@ -215,25 +218,27 @@ class LyftManager:
         progress_bar = tqdm(test_dataloader)
         for data in progress_bar:
 
-            position_tensor = data["target_positions"].to(self.device)
-            velocity_tensor = data["target_velocities"].to(self.device)
-            acceleration_tensor = data["target_accelerations"].to(self.device)
-            yaw_tensor = data["target_yaws"].to(self.device)
+            # ids = data["track_id"]
+            # position_tensor = data["target_positions"].to(self.device)
+            # velocity_tensor = data["target_velocities"].to(self.device)
+            # acceleration_tensor = data["target_accelerations"].to(self.device)
+            # yaw_tensor = data["target_yaws"].to(self.device)
 
             history_position_tensor = data["history_positions"].to(self.device)
-            history_velocity_tensor = data["history_velocities"].to(self.device)
-            history_acceleration_tensor = data["history_accelerations"].to(self.device)
-            history_yaw_tensor = data["history_yaws"].to(self.device)
-            history_availability = data["history_availabilities"].to(self.device)
-
-            # print(history_availability)
+            estimated_future_positions = data["estimated_future_positions"].to(self.device)
+            # history_velocity_tensor = data["history_velocities"].to(self.device)
+            # history_acceleration_tensor = data["history_accelerations"].to(self.device)
+            # history_yaw_tensor = data["history_yaws"].to(self.device)
+            # history_availability = data["history_availabilities"].to(self.device)
 
             imageTensor = data["image"].to(self.device)
             if self.verbose:
                 print("Image Tensor: ", imageTensor.shape)
 
-            state_vector = torch.cat([history_position_tensor, history_velocity_tensor, history_acceleration_tensor,
-                                      history_yaw_tensor], 2).to(self.device)
+            # state_vector = torch.cat([history_position_tensor, history_velocity_tensor, history_acceleration_tensor,
+            #                           history_yaw_tensor], 2).to(self.device)
+
+            state_vector = torch.cat([estimated_future_positions, history_position_tensor], 1).to(self.device)
 
             state_vector = torch.flatten(state_vector, 1).to(self.device)
             # print(state_vector)

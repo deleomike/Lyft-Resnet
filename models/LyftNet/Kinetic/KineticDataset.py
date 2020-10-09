@@ -81,6 +81,8 @@ class KineticDataset(AgentDataset):
         history_accelerations = np.array(data["history_accelerations"], dtype=np.float32)
         history_yaws = np.array(data["history_yaws"], dtype=np.float32)
 
+        estimated_positions = np.array(data["estimated_future_positions"], dtype=np.float32)
+
         timestamp = frames[state_index]["timestamp"]
         track_id = np.int64(-1 if track_id is None else track_id)  # always a number to avoid crashing torch
 
@@ -96,6 +98,7 @@ class KineticDataset(AgentDataset):
             "history_accelerations": history_accelerations,
             "history_yaws": history_yaws,
             "history_availabilities": data["history_availabilities"],
+            "estimated_future_positions": estimated_positions,
             "world_to_image": data["world_to_image"],
             "track_id": track_id,
             "timestamp": timestamp,

@@ -72,14 +72,14 @@ class KineticDataset(AgentDataset):
         image = data["image"].transpose(2, 0, 1)
 
         target_positions = np.array(data["target_positions"], dtype=np.float32)
-        target_velocities = np.array(data["target_velocities"], dtype=np.float32)
-        target_accelerations = np.array(data["target_accelerations"], dtype=np.float32)
+        # target_velocities = np.array(data["target_velocities"], dtype=np.float32)
+        # target_accelerations = np.array(data["target_accelerations"], dtype=np.float32)
         target_yaws = np.array(data["target_yaws"], dtype=np.float32)
 
         history_positions = np.array(data["history_positions"], dtype=np.float32)
-        history_velocities = np.array(data["history_velocities"], dtype=np.float32)
-        history_accelerations = np.array(data["history_accelerations"], dtype=np.float32)
-        history_yaws = np.array(data["history_yaws"], dtype=np.float32)
+        # history_velocities = np.array(data["history_velocities"], dtype=np.float32)
+        # history_accelerations = np.array(data["history_accelerations"], dtype=np.float32)
+        # history_yaws = np.array(data["history_yaws"], dtype=np.float32)
 
         estimated_positions = np.array(data["estimated_future_positions"], dtype=np.float32)
 
@@ -89,14 +89,9 @@ class KineticDataset(AgentDataset):
         return {
             "image": image,
             "target_positions": target_positions,
-            "target_velocities": target_velocities,
-            "target_accelerations": target_accelerations,
             "target_yaws": target_yaws,
             "target_availabilities": data["target_availabilities"],
             "history_positions": history_positions,
-            "history_velocities": history_velocities,
-            "history_accelerations": history_accelerations,
-            "history_yaws": history_yaws,
             "history_availabilities": data["history_availabilities"],
             "estimated_future_positions": estimated_positions,
             "world_to_image": data["world_to_image"],

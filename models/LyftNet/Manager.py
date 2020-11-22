@@ -1,4 +1,4 @@
-from models.LyftNet.LyftNet import LyftNet, LyftLoss
+from models.LyftNet.LyftNet import LyftNet
 from models.LyftNet.MNASBackbone import MnasBackbone
 from models.resnet152.loss_functions import pytorch_neg_multi_log_likelihood_batch, pytorch_neg_multi_log_likelihood_single
 from l5kit.evaluation import write_pred_csv
@@ -54,7 +54,6 @@ class LyftManager:
         self.model = LyftNet(self.backbone, num_modes=num_modes, num_kinetic_dim=2 * (self.future_len + 1),
                              num_targets=num_targets, input_shape=(num_in_channels, raster_size[0], raster_size[1]))
 
-        self.lossModel = LyftLoss(num_modes=num_modes)
         self.model.to(device=self.device)
 
     def train(self, iterations, lr=1e-3, file_name="lyft-net.pth"):
@@ -171,8 +170,9 @@ class LyftManager:
             rolling_avg.append(np.mean(losses_train))
             progress_bar.set_description(f"loss: {loss.item()} loss(avg): {np.mean(losses_train)}")
 
-            # if i == 10000:
-            #     torch.save(model.state_dict(), "/home/michael/Workspace/Lyft/model/resnet" + str(i) + ".pth")
+            # Save once a day
+            if i % 86000 == 0:
+                torch.save(self.model.state_dict(), f"/home/michael/Workspace/Lyft/model/{file_name[:-4]}_backup-{i}.pth")
 
         print("Done Training")
         torch.save(self.model.state_dict(), f"/home/michael/Workspace/Lyft/model/{file_name}")

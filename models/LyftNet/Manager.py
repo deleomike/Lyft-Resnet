@@ -172,10 +172,10 @@ class LyftManager:
 
             # Save once a day
             if i % 86000 == 0:
-                torch.save(self.model.state_dict(), f"/home/michael/Workspace/Lyft/model/{file_name[:-4]}_backup-{i}.pth")
+                torch.save(self.model.state_dict(), f"./model/{file_name[:-4]}_backup-{i}.pth")
 
         print("Done Training")
-        torch.save(self.model.state_dict(), f"/home/michael/Workspace/Lyft/model/{file_name}")
+        torch.save(self.model.state_dict(), f"./model/{file_name}")
 
     def evaluate(self, data_path, file_name="submission.csv"):
 

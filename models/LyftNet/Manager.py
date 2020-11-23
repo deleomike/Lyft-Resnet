@@ -22,6 +22,8 @@ import gc
 
 import pandas as pd
 
+import horovod.torch as hvd
+
 
 class LyftManager:
 
@@ -96,6 +98,12 @@ class LyftManager:
         # ==== INIT MODEL parameters
         optimizer = optim.Adam(self.model.parameters(), lr=lr)
         criterion = nn.PoissonNLLLoss()
+
+        # Add Horovod Distributed Optimizer
+        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+
+        # Broadcast parameters from rank 0 to all other processes.
+        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
 
         # ==== TRAIN LOOP
 

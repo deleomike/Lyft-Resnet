@@ -88,10 +88,17 @@ class LyftManager:
         #
         # print(agents.head())
 
-        train_dataloader = DataLoader(train_dataset,
+        train_dataloader2 = DataLoader(train_dataset,
                                       shuffle=train_cfg["shuffle"],
                                       batch_size=train_cfg["batch_size"],
                                       num_workers=train_cfg["num_workers"])
+
+        # Distributed Training Data Loader
+        train_sampler = torch.utils.data.distributed.DistributedSampler(
+            train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
+
+        train_dataloader = torch.utils.data.DataLoader(
+            dataset=train_dataset, batch_size=self.cfg["train_data_loader"]["batch_size"], sampler=train_sampler)
 
         print(train_dataset)
 
@@ -100,10 +107,10 @@ class LyftManager:
         criterion = nn.PoissonNLLLoss()
 
         # Add Horovod Distributed Optimizer
-        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=self.model.named_parameters())
 
         # Broadcast parameters from rank 0 to all other processes.
-        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+        hvd.broadcast_parameters(self.model.state_dict(), root_rank=0)
 
         # ==== TRAIN LOOP
 
@@ -178,8 +185,8 @@ class LyftManager:
             rolling_avg.append(np.mean(losses_train))
             progress_bar.set_description(f"loss: {loss.item()} loss(avg): {np.mean(losses_train)}")
 
-            # Save once a day
-            if i % 86000 == 0:
+            # Save once every 12 hours
+            if i % 40000 == 0 and hvd.rank() == 0:
                 torch.save(self.model.state_dict(), f"./model/{file_name[:-4]}_backup-{i}.pth")
 
         print("Done Training")

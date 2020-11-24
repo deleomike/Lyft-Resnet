@@ -1,9 +1,9 @@
 #!/usr/bin
 
-#sudo add-apt-repository ppa:deadsnakes/ppa
-#sudo apt-get update
-#
-#sudo apt-get install Python3.7 python3.7-venv
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt-get update
+
+sudo apt-get install Python3.7 python3.7-venv
 
 sudo apt-get install -y python3-venv
 

@@ -1,15 +1,15 @@
 #!/usr/bin
 
-sudo add-apt-repository ppa:deadsnakes/ppa
-sudo apt-get update
+git clone https://github.com/deleomike/HelperScripts
+cd HelperScripts
+bash helper.sh -C
 
-sudo apt-get install Python3.7 python3.7-venv
+conda init
+conda create -n Lyft python==3.7
 
-sudo apt-get install -y python3-venv
+conda activate Lyft
 
-python3 -m venv env
-
-source ./env/bin/activate
+conda install -y gxx_linux-64
 
 pip install l5kit==1.0.6 pytorch_pfn_extras
 

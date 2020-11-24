@@ -2,7 +2,7 @@
 
 git clone https://github.com/deleomike/HelperScripts
 cd HelperScripts
-bash helper.sh -C
+bash helper.sh -o
 
 conda init
 conda create -n Lyft python==3.7

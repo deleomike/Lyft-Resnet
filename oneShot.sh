@@ -1,6 +1,13 @@
 #!/usr/bin
 
-python -m venv env
+#sudo add-apt-repository ppa:deadsnakes/ppa
+#sudo apt-get update
+#
+#sudo apt-get install Python3.7 python3.7-venv
+
+sudo apt-get install -y python3-venv
+
+python3 -m venv env
 
 source ./env/bin/activate
 
@@ -11,4 +18,4 @@ pip install l5kit==1.0.6 pytorch_pfn_extras
 
 bash downloadData.sh
 
-python -m main
+#horovodrun -np 4 python -m main

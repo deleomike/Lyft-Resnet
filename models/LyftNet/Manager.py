@@ -88,10 +88,10 @@ class LyftManager:
         #
         # print(agents.head())
 
-        train_dataloader2 = DataLoader(train_dataset,
-                                      shuffle=train_cfg["shuffle"],
-                                      batch_size=train_cfg["batch_size"],
-                                      num_workers=train_cfg["num_workers"])
+        # train_dataloader2 = DataLoader(train_dataset,
+        #                               shuffle=train_cfg["shuffle"],
+        #                               batch_size=train_cfg["batch_size"],
+        #                               num_workers=train_cfg["num_workers"])
 
         # Distributed Training Data Loader
         train_sampler = torch.utils.data.distributed.DistributedSampler(
